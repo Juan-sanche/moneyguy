@@ -1,8 +1,9 @@
-// Add this line at the very top of your NextAuth route file:
-export const dynamic = 'force-dynamic'
-
 import NextAuth from 'next-auth'
 import { authOptions } from '../../../../../lib/auth'
+
+// This tells Next.js this route is dynamic and should not be statically generated
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 const handler = NextAuth(authOptions)
 
