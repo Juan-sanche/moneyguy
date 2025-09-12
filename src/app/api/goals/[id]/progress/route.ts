@@ -1,3 +1,4 @@
+// src/app/api/goals/[id]/progress/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
 import { requireAuth, unauthorizedResponse, errorResponse, successResponse } from '../../../../../../lib/auth-helpers';
@@ -11,10 +12,16 @@ export async function PUT(
     const user = await requireAuth(request);
     const { id } = params;
     const body = await request.json();
+    
     const { amount, note } = body;
     
-    if (!amount || isNaN(amount)) {
-      return errorResponse('Valid amount is required');
+    // Validation
+    if (amount === undefined || amount === null) {
+      return errorResponse('Progress amount is required');
+    }
+    
+    if (amount < 0) {
+      return errorResponse('Progress amount cannot be negative');
     }
     
     // Check if goal exists and belongs to user
@@ -29,49 +36,56 @@ export async function PUT(
       return errorResponse('Goal not found', 404);
     }
     
-    const progressAmount = parseFloat(amount);
+    // Calculate new current amount
+    const progressAmount = parseFloat(amount.toString());
     const newCurrentAmount = Number(goal.currentAmount) + progressAmount;
+    
+    // Determine if goal should be marked as completed
     const isCompleted = newCurrentAmount >= Number(goal.targetAmount);
     
-    // Create progress record
-    const progress = await prisma.goalProgress.create({
-      data: {
-        goalId: id,
-        amount: progressAmount,
-        note: note || null,
-      }
-    });
-    
-    // Update goal's current amount and completion status
-    const updatedGoal = await prisma.goal.update({
-      where: { id },
-      data: {
-        currentAmount: newCurrentAmount,
-        isCompleted,
-      },
-      include: {
-        progress: {
-          orderBy: {
-            createdAt: 'desc'
+    // Start transaction to update both goal and create progress record
+    const result = await prisma.$transaction(async (tx) => {
+      // Update goal current amount
+      const updatedGoal = await tx.goal.update({
+        where: { id },
+        data: {
+          currentAmount: newCurrentAmount,
+          isCompleted,
+          updatedAt: new Date()
+        },
+        include: {
+          progress: {
+            orderBy: {
+              createdAt: 'desc'
+            }
           }
         }
-      }
+      });
+      
+      // Create progress record
+      const progressRecord = await tx.goalProgress.create({
+        data: {
+          goalId: id,
+          amount: progressAmount,
+          note: note || null,
+        }
+      });
+      
+      return { updatedGoal, progressRecord };
     });
     
     return successResponse({
       success: true,
       data: {
-        goal: {
-          ...updatedGoal,
-          targetAmount: Number(updatedGoal.targetAmount),
-          currentAmount: Number(updatedGoal.currentAmount),
-        },
-        progress: {
-          ...progress,
-          amount: Number(progress.amount)
-        }
+        ...result.updatedGoal,
+        targetAmount: Number(result.updatedGoal.targetAmount),
+        currentAmount: Number(result.updatedGoal.currentAmount),
+        progressAdded: progressAmount,
+        isCompleted,
       },
-      message: 'Goal progress updated successfully'
+      message: isCompleted 
+        ? '🎉 ¡Felicidades! Has completado tu meta' 
+        : 'Progreso actualizado exitosamente'
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
@@ -105,7 +119,7 @@ export async function GET(
     }
     
     // Get progress history
-    const progressHistory = await prisma.goalProgress.findMany({
+    const progress = await prisma.goalProgress.findMany({
       where: {
         goalId: id
       },
@@ -114,15 +128,17 @@ export async function GET(
       }
     });
     
-    const progressWithNumbers = progressHistory.map(p => ({
-      ...p,
-      amount: Number(p.amount)
-    }));
-    
     return successResponse({
       success: true,
-      data: progressWithNumbers,
-      message: 'Goal progress retrieved successfully'
+      data: {
+        goalId: id,
+        goalTitle: goal.title,
+        progress: progress.map(p => ({
+          ...p,
+          amount: Number(p.amount)
+        }))
+      },
+      message: 'Goal progress history retrieved successfully'
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
@@ -131,86 +147,5 @@ export async function GET(
     
     console.error('Error fetching goal progress:', error);
     return errorResponse('Failed to fetch goal progress', 500);
-  }
-}
-
-// POST /api/goals/[id]/progress - Add new progress entry (alternative to PUT)
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const user = await requireAuth(request);
-    const { id } = params;
-    const body = await request.json();
-    const { amount, note } = body;
-    
-    if (!amount || isNaN(amount)) {
-      return errorResponse('Valid amount is required');
-    }
-    
-    // Check if goal exists and belongs to user
-    const goal = await prisma.goal.findFirst({
-      where: {
-        id,
-        userId: user.id
-      }
-    });
-    
-    if (!goal) {
-      return errorResponse('Goal not found', 404);
-    }
-    
-    const progressAmount = parseFloat(amount);
-    const newCurrentAmount = Number(goal.currentAmount) + progressAmount;
-    const isCompleted = newCurrentAmount >= Number(goal.targetAmount);
-    
-    // Create progress record
-    const progress = await prisma.goalProgress.create({
-      data: {
-        goalId: id,
-        amount: progressAmount,
-        note: note || null,
-      }
-    });
-    
-    // Update goal's current amount and completion status
-    const updatedGoal = await prisma.goal.update({
-      where: { id },
-      data: {
-        currentAmount: newCurrentAmount,
-        isCompleted,
-      },
-      include: {
-        progress: {
-          orderBy: {
-            createdAt: 'desc'
-          }
-        }
-      }
-    });
-    
-    return successResponse({
-      success: true,
-      data: {
-        goal: {
-          ...updatedGoal,
-          targetAmount: Number(updatedGoal.targetAmount),
-          currentAmount: Number(updatedGoal.currentAmount),
-        },
-        progress: {
-          ...progress,
-          amount: Number(progress.amount)
-        }
-      },
-      message: 'Goal progress added successfully'
-    }, 201);
-  } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return unauthorizedResponse();
-    }
-    
-    console.error('Error adding goal progress:', error);
-    return errorResponse('Failed to add goal progress', 500);
   }
 }

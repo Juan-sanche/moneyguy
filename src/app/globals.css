@@ -2,53 +2,549 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Reset básico */
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
 }
 
+html,
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  line-height: 1.6;
-  color: #333;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
-/* Componentes personalizados */
-@layer components {
-  .buddy-gradient {
-    background: linear-gradient(135deg, #2563eb 0%, #16a34a 100%);
-  }
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
 
-  .buddy-card {
-    @apply bg-white rounded-lg shadow-lg border border-gray-200 p-6;
-  }
+a {
+  color: inherit;
+  text-decoration: none;
+}
 
-  .buddy-button {
-    background: linear-gradient(135deg, #3b82f6 0%, #22c55e 100%);
-    @apply text-white font-medium px-4 py-2 rounded-xl transition-all duration-200 shadow-lg;
+@media (prefers-color-scheme: dark) {
+  html {
+    color-scheme: dark;
   }
+}
 
-  .buddy-button:hover {
-    background: linear-gradient(135deg, #2563eb 0%, #16a34a 100%);
+/* Scrollbar personalizado */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Animaciones personalizadas */
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
     transform: scale(1.05);
   }
+}
 
-  .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors;
-  }
+/* Clases utilitarias personalizadas */
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 3s ease infinite;
+}
 
-  .sidebar-nav-item {
-    @apply w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 text-left;
-  }
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
 
-  .sidebar-nav-item.active {
-    background: rgba(255, 255, 255, 0.2);
-    @apply text-white shadow-lg;
-  }
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out forwards;
+}
 
-  .sidebar-nav-item:not(.active) {
-    @apply text-white opacity-80 hover:bg-white hover:bg-opacity-10;
+.animate-slide-in-left {
+  animation: slideInLeft 0.3s ease-out forwards;
+}
+
+.animate-gentle-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Efectos de hover suaves */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Botón con gradiente */
+.gradient-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  transition: all 0.3s ease;
+}
+
+.gradient-button:hover {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+}
+
+/* Chat bubble animations */
+.chat-bubble-user {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.chat-bubble-ai {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+/* Loading spinner mejorado */
+.loading-dots {
+  display: inline-block;
+}
+
+.loading-dots::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: loading-pulse 1.4s infinite ease-in-out both;
+}
+
+.loading-dots::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: loading-pulse 1.4s infinite ease-in-out both;
+  animation-delay: -0.16s;
+  margin-right: 4px;
+}
+
+@keyframes loading-pulse {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
   }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Mejorar focus states para accesibilidad */
+input:focus,
+button:focus,
+textarea:focus {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* Backdrop blur para modales */
+.backdrop-blur-custom {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Transiciones suaves globales */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Mejoras para el chat */
+.chat-container {
+  scroll-behavior: smooth;
+}
+
+.message-container {
+  scroll-margin-top: 20px;
+  scroll-margin-bottom: 20px;
+}
+
+/* Efectos de glassmorphism */
+.glass-card {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.glass-card-dark {
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Mejores sombras */
+.shadow-elegant {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+              0 2px 4px -1px rgba(0, 0, 0, 0.06),
+              0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+.shadow-elegant-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+              0 4px 6px -2px rgba(0, 0, 0, 0.05),
+              0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+/* Estados de carga más elegantes */
+.skeleton {
+  background: linear-gradient(90deg, 
+    rgba(240, 240, 240, 0.8) 0%, 
+    rgba(220, 220, 220, 0.8) 50%, 
+    rgba(240, 240, 240, 0.8) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Responsive mejoras */
+@media (max-width: 640px) {
+  .chat-bubble-user,
+  .chat-bubble-ai {
+    max-width: 90%;
+  }
+}
+
+/* Mejoras para botones */
+.btn-primary {
+  @apply bg-gradient-to-r from-blue-500 to-purple-600 text-white font-medium py-2 px-4 rounded-lg;
+  @apply hover:from-blue-600 hover:to-purple-700 transform transition-all duration-200;
+  @apply focus:ring-4 focus:ring-blue-200 hover:scale-105;
+}
+
+.btn-secondary {
+  @apply bg-gray-100 text-gray-700 font-medium py-2 px-4 rounded-lg;
+  @apply hover:bg-gray-200 transition-colors duration-200;
+}
+
+.btn-danger {
+  @apply bg-red-500 text-white font-medium py-2 px-4 rounded-lg;
+  @apply hover:bg-red-600 transition-colors duration-200;
+}
+
+/* Estados interactivos mejorados */
+.interactive {
+  @apply transform transition-all duration-200 cursor-pointer;
+}
+
+.interactive:hover {
+  @apply scale-105 shadow-lg;
+}
+
+.interactive:active {
+  @apply scale-95;
+}
+
+/* Mejoras para formularios */
+.form-input {
+  @apply w-full px-4 py-2 border border-gray-300 rounded-lg;
+  @apply focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  @apply transition-all duration-200;
+}
+
+.form-input:focus {
+  @apply shadow-md;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700 mb-1;
+}
+
+.form-error {
+  @apply text-sm text-red-600 mt-1;
+}
+
+/* Animaciones de entrada para elementos */
+.slide-up {
+  animation: slideUp 0.4s ease-out forwards;
+}
+
+.slide-down {
+  animation: slideDown 0.4s ease-out forwards;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tipografía mejorada */
+.text-gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Mejoras para el estado de carga */
+.loading-container {
+  @apply flex items-center justify-center p-8;
+}
+
+.loading-spinner {
+  @apply animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500;
+}
+
+/* Indicadores de estado */
+.status-indicator {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.status-success {
+  @apply bg-green-100 text-green-800;
+}
+
+.status-warning {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.status-error {
+  @apply bg-red-100 text-red-800;
+}
+
+.status-info {
+  @apply bg-blue-100 text-blue-800;
+}
+
+/* Cards mejoradas */
+.card {
+  @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
+  @apply hover:shadow-md transition-shadow duration-200;
+}
+
+.card-header {
+  @apply mb-4 pb-4 border-b border-gray-200;
+}
+
+.card-title {
+  @apply text-lg font-semibold text-gray-900;
+}
+
+.card-subtitle {
+  @apply text-sm text-gray-600 mt-1;
+}
+
+/* Navegación mejorada */
+.nav-item {
+  @apply flex items-center px-3 py-2 rounded-lg text-sm font-medium;
+  @apply transition-colors duration-200;
+}
+
+.nav-item-active {
+  @apply bg-blue-100 text-blue-700;
+}
+
+.nav-item-inactive {
+  @apply text-gray-600 hover:text-gray-900 hover:bg-gray-100;
+}
+
+/* Utilidades para spacing consistente */
+.section-spacing {
+  @apply py-8 md:py-12 lg:py-16;
+}
+
+.content-spacing {
+  @apply space-y-6 md:space-y-8;
+}
+
+/* Mejoras para accesibilidad */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus visible para mejor accesibilidad */
+.focus-visible:focus {
+  @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+}
+
+/* Mejoras para responsive design */
+@media (max-width: 768px) {
+  .mobile-hidden {
+    @apply hidden;
+  }
+  
+  .mobile-full {
+    @apply w-full;
+  }
+  
+  .mobile-stack {
+    @apply flex-col space-y-2 space-x-0;
+  }
+}
+
+/* Animaciones de micro-interacciones */
+.bounce-in {
+  animation: bounceIn 0.6s ease-out;
+}
+
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Estados de hover para mejor feedback */
+.hover-bg-shift {
+  @apply transition-colors duration-300;
+}
+
+.hover-bg-shift:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+}
+
+/* Layout utilities */
+.container-custom {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+}
+
+.grid-auto-fit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Final touches */
+.smooth-corners {
+  border-radius: 1rem;
+}
+
+.gentle-shadow {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.elegant-border {
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
