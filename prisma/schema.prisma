@@ -58,6 +58,10 @@ model User {
   categories      Category[]
   chatHistory     ChatMessage[]
   dailyUsage      DailyUsage[]
+  alerts          Alert[]
+  bankAccounts    BankAccount[]
+  reports         Report[]
+  notifications   Notification[]
 }
 
 model VerificationToken {
@@ -111,6 +115,12 @@ model Transaction {
   date        DateTime    @default(now())
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+  
+  // Nuevos campos para análisis avanzado
+  location    String?     // Ubicación de la transacción
+  tags        String[]    // Tags personalizados
+  recurring   Boolean     @default(false) // Si es recurrente
+  confidence  Float?      @default(1.0)   // Confianza en la categorización automática
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -129,6 +139,10 @@ model Budget {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  
+  // Nuevos campos para alertas inteligentes
+  alertThreshold Decimal @db.Decimal(5, 2) @default(80.00) // % para alertas
+  rollover       Boolean @default(false) // Si el sobrante pasa al próximo periodo
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -146,6 +160,11 @@ model Goal {
   isCompleted   Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  
+  // Nuevos campos para mejor seguimiento
+  priority      Priority @default(MEDIUM)
+  autoTransfer  Boolean  @default(false) // Transferencia automática
+  reminderFreq  ReminderFrequency? // Frecuencia de recordatorios
 
   user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   progress GoalProgress[]
@@ -157,6 +176,10 @@ model GoalProgress {
   amount    Decimal  @db.Decimal(10, 2)
   note      String?
   createdAt DateTime @default(now())
+  
+  // Campos adicionales para mejor tracking
+  source    String?  @default("manual") // manual, automatic, bank_transfer, etc.
+  milestone Boolean  @default(false)    // Si es un hito importante
 
   goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
 }
@@ -183,7 +206,12 @@ model ChatMessage {
   role      MessageRole
   content   String      @db.Text
   timestamp DateTime    @default(now())
-  sessionId String?     // Optional: group messages by chat session
+  sessionId String?
+  
+  // Nuevos campos para mejor análisis
+  functionCalled String? // Función que se ejecutó (si aplica)
+  tokens         Int?    // Tokens consumidos
+  responseTime   Int?    // Tiempo de respuesta en ms
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -201,7 +229,86 @@ model DailyUsage {
   @@unique([userId, date])
 }
 
-// Enums
+// NUEVO: Sistema de Alertas Inteligentes
+model Alert {
+  id          String      @id @default(cuid())
+  userId      String
+  type        AlertType
+  condition   Json        // Condiciones que activaron la alerta
+  message     String      @db.Text
+  priority    AlertPriority
+  isRead      Boolean     @default(false)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Para evitar duplicados
+  @@unique([userId, type, condition])
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NUEVO: Cuentas Bancarias (para Open Banking)
+model BankAccount {
+  id              String   @id @default(cuid())
+  userId          String
+  bankName        String
+  accountName     String
+  accountNumber   String   // Encriptado
+  accountType     BankAccountType
+  balance         Decimal? @db.Decimal(10, 2)
+  currency        String   @default("EUR")
+  isActive        Boolean  @default(true)
+  lastSynced      DateTime?
+  syncEnabled     Boolean  @default(false)
+  
+  // Credenciales de API (encriptadas)
+  apiCredentials  Json?    // Credenciales para Open Banking API
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, accountNumber])
+}
+
+// NUEVO: Reportes Automáticos
+model Report {
+  id          String     @id @default(cuid())
+  userId      String
+  title       String
+  type        ReportType
+  period      ReportPeriod
+  format      ReportFormat @default(PDF)
+  content     Json       // Datos del reporte
+  fileUrl     String?    // URL del archivo generado
+  isScheduled Boolean    @default(false)
+  schedule    Json?      // Configuración de programación
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NUEVO: Notificaciones Push
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  message   String           @db.Text
+  type      NotificationType
+  channel   NotificationChannel @default(APP)
+  isRead    Boolean          @default(false)
+  isSent    Boolean          @default(false)
+  sentAt    DateTime?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Enums existentes
 enum CategoryType {
   INCOME
   EXPENSE
@@ -238,4 +345,80 @@ enum MessageRole {
   USER
   ASSISTANT
   SYSTEM
+}
+
+// Nuevos Enums
+enum AlertType {
+  BUDGET_EXCEEDED
+  GOAL_DEADLINE
+  SPENDING_PATTERN
+  ACHIEVEMENT
+  RECOMMENDATION
+  BANK_SYNC_ERROR
+  UNUSUAL_ACTIVITY
+}
+
+enum AlertPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ReminderFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  NEVER
+}
+
+enum BankAccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  INVESTMENT
+  OTHER
+}
+
+enum ReportType {
+  MONTHLY_SUMMARY
+  BUDGET_ANALYSIS
+  GOAL_PROGRESS
+  SPENDING_ANALYSIS
+  CUSTOM
+}
+
+enum ReportPeriod {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+  JSON
+}
+
+enum NotificationType {
+  ALERT
+  REMINDER
+  ACHIEVEMENT
+  REPORT_READY
+  SYSTEM
+}
+
+enum NotificationChannel {
+  APP
+  EMAIL
+  PUSH
+  SMS
 }

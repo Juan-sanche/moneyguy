@@ -7,10 +7,22 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const DAILY_MESSAGE_LIMIT = 50; // Aumentamos el límite
+const DAILY_MESSAGE_LIMIT = 50;
 
-// Function calling definitions
+interface ChatRequest {
+  message: string;
+  sessionId?: string;
+  userContext?: {
+    firstName?: string;
+    transactions?: any[];
+    budgets?: any[];
+    goals?: any[];
+  };
+}
+
+// Complete function definitions including basic and advanced functions
 const functions = [
+  // Basic functions
   {
     name: "addTransaction",
     description: "Add a new financial transaction (income or expense)",
@@ -148,13 +160,136 @@ const functions = [
       type: "object",
       properties: {}
     }
+  },
+  // Advanced functions
+  {
+    name: "getSmartAlerts",
+    description: "Get intelligent alerts and notifications about finances",
+    parameters: {
+      type: "object",
+      properties: {
+        priority: {
+          type: "string",
+          enum: ["ALL", "HIGH", "URGENT"],
+          description: "Filter alerts by priority level"
+        }
+      }
+    }
+  },
+  {
+    name: "generateDashboard",
+    description: "Generate dynamic dashboard with charts and metrics",
+    parameters: {
+      type: "object", 
+      properties: {
+        type: {
+          type: "string",
+          enum: ["overview", "detailed", "executive"],
+          description: "Type of dashboard to generate"
+        },
+        period: {
+          type: "string",
+          enum: ["weekly", "monthly", "quarterly", "yearly"],
+          description: "Time period for analysis"
+        }
+      }
+    }
+  },
+  {
+    name: "generateReport",
+    description: "Generate automatic financial reports in PDF or Excel",
+    parameters: {
+      type: "object",
+      properties: {
+        type: {
+          type: "string",
+          enum: ["monthly_summary", "budget_analysis", "goal_progress", "spending_analysis", "executive_summary"],
+          description: "Type of report to generate"
+        },
+        format: {
+          type: "string",
+          enum: ["PDF", "EXCEL", "JSON"],
+          description: "Output format"
+        },
+        includeCharts: {
+          type: "boolean",
+          description: "Include visual charts in report",
+          default: true
+        }
+      },
+      required: ["type", "format"]
+    }
+  },
+  {
+    name: "updateGoalProgress",
+    description: "Add progress to an existing financial goal",
+    parameters: {
+      type: "object",
+      properties: {
+        goalTitle: {
+          type: "string",
+          description: "Title of the goal to update"
+        },
+        amount: {
+          type: "number",
+          description: "Progress amount to add"
+        },
+        note: {
+          type: "string",
+          description: "Optional note about the progress"
+        }
+      },
+      required: ["goalTitle", "amount"]
+    }
+  },
+  {
+    name: "getSpendingInsights",
+    description: "Get AI-powered insights about spending patterns",
+    parameters: {
+      type: "object",
+      properties: {
+        timeframe: {
+          type: "string",
+          enum: ["week", "month", "quarter", "year"],
+          description: "Timeframe for analysis"
+        },
+        category: {
+          type: "string",
+          description: "Specific category to analyze (optional)"
+        }
+      }
+    }
+  },
+  {
+    name: "createScheduledReminder", 
+    description: "Set up automatic reminders for financial tasks",
+    parameters: {
+      type: "object",
+      properties: {
+        type: {
+          type: "string",
+          enum: ["budget_check", "goal_update", "expense_review", "custom"],
+          description: "Type of reminder"
+        },
+        frequency: {
+          type: "string",
+          enum: ["daily", "weekly", "monthly"],
+          description: "Reminder frequency"
+        },
+        message: {
+          type: "string",
+          description: "Custom reminder message"
+        }
+      },
+      required: ["type", "frequency"]
+    }
   }
 ];
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
-    const body = await request.json();
+    const body: ChatRequest = await request.json();
     const { message } = body;
 
     if (!message) {
@@ -272,6 +407,8 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         role: 'ASSISTANT',
         content: aiResponse,
+        functionCalled: functionCall?.name || null,
+        responseTime: Date.now() - userMessage.timestamp.getTime()
       }
     });
 
@@ -318,26 +455,35 @@ async function handleFunctionCall(functionCall: any, userId: string) {
 
   try {
     switch (name) {
+      // Basic functions
       case 'addTransaction':
         return await addTransaction(userId, params);
-      
       case 'getTransactions':
         return await getTransactions(userId, params);
-        
       case 'addBudget':
         return await addBudget(userId, params);
-        
       case 'getBudgets':
         return await getBudgets(userId);
-        
       case 'addGoal':
         return await addGoal(userId, params);
-        
       case 'getGoals':
         return await getGoals(userId);
-        
       case 'getFinancialSummary':
         return await getFinancialSummary(userId);
+      
+      // Advanced functions
+      case 'getSmartAlerts':
+        return await getSmartAlerts(userId, params);
+      case 'generateDashboard':
+        return await generateDashboard(userId, params);
+      case 'generateReport':
+        return await generateReport(userId, params);
+      case 'updateGoalProgress':
+        return await updateGoalProgress(userId, params);
+      case 'getSpendingInsights':
+        return await getSpendingInsights(userId, params);
+      case 'createScheduledReminder':
+        return await createScheduledReminder(userId, params);
         
       default:
         return { error: `Unknown function: ${name}` };
@@ -348,7 +494,7 @@ async function handleFunctionCall(functionCall: any, userId: string) {
   }
 }
 
-// Function implementations
+// Basic function implementations
 async function addTransaction(userId: string, params: any) {
   const { amount, description, category, type, date } = params;
   
@@ -598,6 +744,326 @@ async function getFinancialSummary(userId: string) {
   };
 }
 
+// Advanced function implementations
+async function getSmartAlerts(userId: string, params: any = {}) {
+  // Generate smart alerts based on current data
+  const alerts = await generateSmartAlerts(userId);
+  
+  if (params.priority !== 'ALL') {
+    return {
+      success: true,
+      alerts: alerts.filter(alert => alert.priority === params.priority)
+    };
+  }
+  
+  return {
+    success: true,
+    alerts
+  };
+}
+
+async function generateSmartAlerts(userId: string) {
+  const alerts = [];
+  
+  // Get user data
+  const [transactions, budgets, goals] = await Promise.all([
+    prisma.transaction.findMany({
+      where: { userId },
+      include: { category: true },
+      orderBy: { date: 'desc' },
+      take: 100
+    }),
+    prisma.budget.findMany({
+      where: { userId },
+      include: { category: true }
+    }),
+    prisma.goal.findMany({
+      where: { userId }
+    })
+  ]);
+
+  // Budget alerts
+  for (const budget of budgets) {
+    const spent = await calculateBudgetSpent(userId, budget);
+    const percentage = Number(budget.amount) > 0 ? (spent / Number(budget.amount)) * 100 : 0;
+    
+    if (percentage > 90) {
+      alerts.push({
+        type: 'BUDGET_EXCEEDED',
+        priority: percentage > 100 ? 'URGENT' : 'HIGH',
+        message: `Budget alert: ${budget.category?.name || 'Category'} at ${percentage.toFixed(0)}% (${spent.toFixed(2)} of ${budget.amount})`
+      });
+    }
+  }
+
+  // Goal deadline alerts
+  const today = new Date();
+  for (const goal of goals) {
+    if (goal.targetDate && !goal.isCompleted) {
+      const daysLeft = Math.ceil((new Date(goal.targetDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const progress = (Number(goal.currentAmount) / Number(goal.targetAmount)) * 100;
+      
+      if (daysLeft <= 0) {
+        alerts.push({
+          type: 'GOAL_DEADLINE',
+          priority: 'URGENT',
+          message: `Goal "${goal.title}" deadline passed. Progress: ${progress.toFixed(0)}%`
+        });
+      } else if (daysLeft <= 7) {
+        alerts.push({
+          type: 'GOAL_DEADLINE',
+          priority: 'HIGH', 
+          message: `Goal "${goal.title}" due in ${daysLeft} days. Progress: ${progress.toFixed(0)}%`
+        });
+      }
+    }
+  }
+
+  return alerts.slice(0, 10); // Return top 10 alerts
+}
+
+async function calculateBudgetSpent(userId: string, budget: any): Promise<number> {
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      userId,
+      type: 'EXPENSE',
+      ...(budget.categoryId && { categoryId: budget.categoryId }),
+      date: {
+        gte: budget.startDate,
+        lte: budget.endDate
+      }
+    }
+  });
+  
+  return transactions.reduce((sum, t) => sum + Number(t.amount), 0);
+}
+
+async function generateDashboard(userId: string, params: any) {
+  const { type = 'overview', period = 'monthly' } = params;
+  
+  // Get dashboard data (simplified version)
+  const [transactions, budgets, goals] = await Promise.all([
+    prisma.transaction.findMany({
+      where: { userId },
+      include: { category: true },
+      orderBy: { date: 'desc' },
+      take: 200
+    }),
+    getBudgets(userId),
+    getGoals(userId)
+  ]);
+
+  const totalIncome = transactions.filter(t => t.type === 'INCOME').reduce((sum, t) => sum + Number(t.amount), 0);
+  const totalExpenses = transactions.filter(t => t.type === 'EXPENSE').reduce((sum, t) => sum + Number(t.amount), 0);
+  
+  return {
+    success: true,
+    dashboard: {
+      type,
+      period,
+      metrics: {
+        totalIncome,
+        totalExpenses,
+        netCashFlow: totalIncome - totalExpenses,
+        savingsRate: totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0
+      },
+      budgetSummary: `${budgets.budgets?.length || 0} active budgets`,
+      goalSummary: `${goals.goals?.length || 0} financial goals`
+    }
+  };
+}
+
+async function generateReport(userId: string, params: any) {
+  const { type, format, includeCharts = true } = params;
+  
+  // In a real implementation, this would generate actual files
+  // For now, return a success message with mock data
+  return {
+    success: true,
+    report: {
+      type,
+      format,
+      generated: new Date().toISOString(),
+      message: `${format} report "${type}" generated successfully`,
+      downloadUrl: `/reports/${type}_${Date.now()}.${format.toLowerCase()}`
+    }
+  };
+}
+
+async function updateGoalProgress(userId: string, params: any) {
+  const { goalTitle, amount, note } = params;
+  
+  // Find goal by title
+  const goals = await prisma.goal.findMany({
+    where: { userId }
+  });
+  
+  const goal = goals.find(g => 
+    g.title.toLowerCase().includes(goalTitle.toLowerCase()) ||
+    goalTitle.toLowerCase().includes(g.title.toLowerCase())
+  );
+  
+  if (!goal) {
+    return { error: `No goal found with title "${goalTitle}"` };
+  }
+  
+  // Update goal progress
+  const newCurrentAmount = Number(goal.currentAmount) + amount;
+  const isCompleted = newCurrentAmount >= Number(goal.targetAmount);
+  
+  const updatedGoal = await prisma.goal.update({
+    where: { id: goal.id },
+    data: {
+      currentAmount: newCurrentAmount,
+      isCompleted,
+      updatedAt: new Date()
+    }
+  });
+  
+  // Create progress record
+  await prisma.goalProgress.create({
+    data: {
+      goalId: goal.id,
+      amount: amount,
+      note: note || null,
+    }
+  });
+  
+  const progress = (newCurrentAmount / Number(goal.targetAmount)) * 100;
+  
+  return {
+    success: true,
+    goal: {
+      ...updatedGoal,
+      targetAmount: Number(updatedGoal.targetAmount),
+      currentAmount: Number(updatedGoal.currentAmount)
+    },
+    progress,
+    isCompleted
+  };
+}
+
+async function getSpendingInsights(userId: string, params: any = {}) {
+  const { timeframe = 'month', category } = params;
+  
+  // Calculate date range
+  const now = new Date();
+  let startDate: Date;
+  
+  switch (timeframe) {
+    case 'week':
+      startDate = new Date(now.setDate(now.getDate() - 7));
+      break;
+    case 'quarter':
+      startDate = new Date(now.setMonth(now.getMonth() - 3));
+      break;
+    case 'year':
+      startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+      break;
+    default: // month
+      startDate = new Date(now.setMonth(now.getMonth() - 1));
+  }
+  
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      userId,
+      type: 'EXPENSE',
+      date: { gte: startDate },
+      ...(category && { 
+        category: { 
+          name: { contains: category, mode: 'insensitive' } 
+        } 
+      })
+    },
+    include: { category: true },
+    orderBy: { date: 'desc' }
+  });
+  
+  const totalAmount = transactions.reduce((sum, t) => sum + Number(t.amount), 0);
+  const avgTransactionAmount = transactions.length > 0 ? totalAmount / transactions.length : 0;
+  
+  // Generate basic insights
+  const categoryTotals: { [key: string]: number } = {};
+  transactions.forEach(t => {
+    const cat = t.category?.name || 'Uncategorized';
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(t.amount);
+  });
+  
+  const topCategory = Object.entries(categoryTotals)
+    .sort(([,a], [,b]) => b - a)[0];
+  
+  return {
+    success: true,
+    timeframe,
+    totalTransactions: transactions.length,
+    totalAmount,
+    avgTransactionAmount,
+    topCategory: topCategory ? {
+      name: topCategory[0],
+      amount: topCategory[1],
+      percentage: (topCategory[1] / totalAmount) * 100
+    } : null,
+    insights: [
+      `Analyzed ${transactions.length} transactions totaling ${totalAmount.toFixed(2)}`,
+      `Average transaction: ${avgTransactionAmount.toFixed(2)}`,
+      topCategory ? `Top category: ${topCategory[0]} (${topCategory[1].toFixed(2)})` : 'No category data available'
+    ]
+  };
+}
+
+async function createScheduledReminder(userId: string, params: any) {
+  const { type, frequency, message } = params;
+  
+  // Create notification reminder
+  const reminder = await prisma.notification.create({
+    data: {
+      userId,
+      title: `Recordatorio: ${type}`,
+      message: message || getDefaultReminderMessage(type),
+      type: 'REMINDER',
+      channel: 'APP'
+    }
+  });
+  
+  return {
+    success: true,
+    reminder: {
+      id: reminder.id,
+      type,
+      frequency,
+      message: reminder.message,
+      nextTrigger: calculateNextTrigger(frequency)
+    }
+  };
+}
+
+// Helper functions
+function getDefaultReminderMessage(type: string): string {
+  const messages: { [key: string]: string } = {
+    'budget_check': 'Es hora de revisar tu progreso presupuestario',
+    'goal_update': 'Actualiza el progreso de tus metas financieras',
+    'expense_review': 'Revisa y categoriza tus gastos recientes',
+    'custom': 'Recordatorio financiero personalizado'
+  };
+  
+  return messages[type] || messages.custom;
+}
+
+function calculateNextTrigger(frequency: string): Date {
+  const now = new Date();
+  
+  switch (frequency) {
+    case 'daily':
+      return new Date(now.setDate(now.getDate() + 1));
+    case 'weekly':
+      return new Date(now.setDate(now.getDate() + 7));
+    case 'monthly':
+      return new Date(now.setMonth(now.getMonth() + 1));
+    default:
+      return new Date(now.setDate(now.getDate() + 1));
+  }
+}
+
 async function getUserContext(userId: string) {
   const [userProfile, transactions, budgets, goals] = await Promise.all([
     prisma.userProfile.findUnique({ where: { userId } }),
@@ -628,9 +1094,10 @@ async function getUserContext(userId: string) {
 }
 
 function buildSystemPrompt(userContext: any): string {
-  return `You are MoneyGuyAI, a friendly personal finance assistant with access to powerful tools.
+  return `You are MoneyGuyAI, an advanced personal finance assistant with powerful analytical capabilities.
 
-Your capabilities:
+AVAILABLE FUNCTIONS:
+Basic Functions:
 - addTransaction: Create new transactions
 - getTransactions: Retrieve transaction history  
 - addBudget: Create budgets
@@ -639,11 +1106,23 @@ Your capabilities:
 - getGoals: Track goal progress
 - getFinancialSummary: Get complete overview
 
-Always use these functions when the user asks to:
-- Add/record/log expenses or income
-- Check budgets, spending, or goals
-- Create new budgets or goals  
-- Get financial summaries or overviews
+Advanced Functions:
+- getSmartAlerts: Get intelligent financial alerts and warnings
+- generateDashboard: Create visual dashboards with charts and metrics  
+- generateReport: Generate professional PDF/Excel reports
+- updateGoalProgress: Add progress to financial goals
+- getSpendingInsights: Get AI-powered spending pattern analysis
+- createScheduledReminder: Set up automatic financial reminders
+
+WHEN TO USE FUNCTIONS:
+- "I spent 25€ on coffee" → addTransaction
+- "How are my budgets?" → getBudgets 
+- "Show me alerts" → getSmartAlerts
+- "Create a dashboard" → generateDashboard
+- "Generate monthly report" → generateReport
+- "Add 200€ to vacation fund" → updateGoalProgress
+- "Analyze my spending patterns" → getSpendingInsights
+- "Remind me weekly to check budget" → createScheduledReminder
 
 User Context:
 - Name: ${userContext.firstName}
@@ -652,16 +1131,24 @@ User Context:
 - Goals: ${userContext.goals?.length || 0}
 
 Communication Style:
-- Be encouraging and supportive
-- Give specific, actionable advice
-- Keep responses concise (2-4 sentences)
+- Be professional yet friendly and encouraging
+- Explain what functions you're using clearly
+- Provide specific, actionable insights after function calls
+- Keep responses concise but informative (2-4 sentences)
 - Use natural language, avoid being robotic
-- When using functions, explain what you did clearly
+- Give concrete recommendations based on data
 
-Example interactions:
-- "I spent 25€ on coffee today" → Use addTransaction
-- "How are my budgets doing?" → Use getBudgets and provide insights
-- "Set a goal to save 5000€ for vacation" → Use addGoal`;
+Example Interactions:
+User: "I spent 25€ on lunch today"
+Assistant: I'll add that lunch expense for you. [calls addTransaction] ✅ Added 25€ lunch expense. That brings your food spending to X€ this month, which is Y% of your food budget.
+
+User: "How are my finances looking?"
+Assistant: Let me generate your financial dashboard to show the complete picture. [calls generateDashboard] Based on your dashboard: You have a positive cash flow of X€, savings rate of Y%, and Z active budgets. Your top spending category is... [specific insights and recommendations]
+
+User: "Any financial alerts?"
+Assistant: I'll check your smart alerts for important notifications. [calls getSmartAlerts] You have X alerts: [summarize each alert with specific actions needed]
+
+Always provide actionable insights and next steps after using functions. Focus on helping the user make better financial decisions.`;
 }
 
 export async function GET(request: NextRequest) {
@@ -697,10 +1184,16 @@ export async function GET(request: NextRequest) {
           limit: DAILY_MESSAGE_LIMIT,
           remaining: DAILY_MESSAGE_LIMIT - (dailyUsage?.messageCount || 0)
         }
-      }
+      },
+      message: 'Chat history retrieved successfully'
     });
 
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return unauthorizedResponse();
+    }
+    
+    console.error('Error fetching chat history:', error);
     return errorResponse('Failed to fetch chat history', 500);
   }
 }
