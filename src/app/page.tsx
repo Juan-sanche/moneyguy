@@ -1,6 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from 'recharts';
 import { useSession, signIn, signOut } from 'next-auth/react';
 
 export default function Home() {
@@ -676,27 +689,46 @@ function DashboardView({
                 </div>
               </div>
 
-              {/* Chart Placeholders */}
+              {/* Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 Flujo de Efectivo</h3>
-                  <div className="h-48 flex items-center justify-center text-gray-500">
+                  <div className="h-64 flex items-center justify-center text-gray-500">
                     <div className="text-center">
                       <div className="text-4xl mb-2">📈</div>
-                      <p>Gráfico de flujo de efectivo</p>
-                      <p className="text-sm">Recharts se integrará aquí</p>
+                      <p className="text-sm">Integración de serie temporal pendiente</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">🥧 Gastos por Categoría</h3>
-                  <div className="h-48 flex items-center justify-center text-gray-500">
-                    <div className="text-center">
-                      <div className="text-4xl mb-2">🥧</div>
-                      <p>Gráfico circular de categorías</p>
-                      <p className="text-sm">Recharts se integrará aquí</p>
-                    </div>
+                  <div className="h-64">
+                    {Array.isArray(categorySpending) && categorySpending.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={categorySpending}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={90}
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          >
+                            {categorySpending.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color || '#3B82F6'} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(v: number) => `€${v.toLocaleString()}`} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                        Sin datos suficientes de gastos por categoría
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -706,6 +738,31 @@ function DashboardView({
           {dashboardTab === 'spending' && (
             <div className="space-y-6">
               <h3 className="text-lg font-semibold text-gray-900">Análisis de Gastos</h3>
+
+              {/* Bar chart by category */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="h-72">
+                  {Array.isArray(categorySpending) && categorySpending.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={categorySpending} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" tick={{ fontSize: 12 }} interval={0} angle={-25} textAnchor="end" height={60} />
+                        <YAxis tickFormatter={(v) => `€${v}`} />
+                        <Tooltip formatter={(v: number) => `€${v.toLocaleString()}`} />
+                        <Bar dataKey="value" radius={[6,6,0,0]}>
+                          {categorySpending.map((entry, index) => (
+                            <Cell key={`bar-${index}`} fill={entry.color || '#3B82F6'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                      Sin datos suficientes de gastos por categoría
+                    </div>
+                  )}
+                </div>
+              </div>
               
               {/* Category breakdown */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

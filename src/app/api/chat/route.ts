@@ -497,27 +497,48 @@ async function handleFunctionCall(functionCall: any, userId: string) {
 // Basic function implementations
 async function addTransaction(userId: string, params: any) {
   const { amount, description, category, type, date } = params;
-  
-  let categoryId = null;
-  if (category) {
-    let categoryRecord = await prisma.category.findFirst({
-      where: {
-        userId,
-        name: category.trim(),
-        type: 'EXPENSE'
-      }
-    });
-    
-    if (!categoryRecord) {
-      categoryRecord = await prisma.category.create({
-        data: {
+
+  // Normalize type
+  const txType = String(type || '').toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE';
+
+  let categoryId: string | null = null;
+  if (category && String(category).trim()) {
+    const name = String(category).trim();
+    const desiredCategoryType = txType === 'INCOME' ? 'INCOME' : 'EXPENSE';
+    try {
+      // Prefer category matching desired type
+      let categoryRecord = await prisma.category.findFirst({
+        where: {
           userId,
-          name: category.trim(),
-          type: 'EXPENSE'
+          name,
+          type: desiredCategoryType as any,
         }
       });
+
+      // If not found, try any category with same name (unique on [userId, name])
+      if (!categoryRecord) {
+        categoryRecord = await prisma.category.findFirst({
+          where: { userId, name }
+        });
+      }
+
+      // Create if none exists
+      if (!categoryRecord) {
+        categoryRecord = await prisma.category.create({
+          data: {
+            userId,
+            name,
+            type: desiredCategoryType as any,
+          }
+        });
+      }
+
+      categoryId = categoryRecord.id;
+    } catch (categoryError) {
+      console.error('Category lookup/create failed in chat addTransaction:', categoryError);
+      // Continue without category rather than failing the whole op
+      categoryId = null;
     }
-    categoryId = categoryRecord.id;
   }
 
   const transaction = await prisma.transaction.create({
@@ -526,7 +547,7 @@ async function addTransaction(userId: string, params: any) {
       amount: parseFloat(amount),
       description,
       categoryId,
-      type,
+      type: txType as any,
       date: date ? new Date(date) : new Date(),
     },
     include: {

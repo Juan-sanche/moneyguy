@@ -52,33 +52,40 @@ export async function POST(request: NextRequest) {
     }
     
     let categoryId = null;
-    
+
     // Create or find category if provided
     if (category && category.trim()) {
-      
+      const name = category.trim();
+      const desiredCategoryType = type === 'INCOME' ? 'INCOME' : 'EXPENSE';
       try {
-        // First, try to find existing category
+        // Prefer category matching desired type
         let categoryRecord = await prisma.category.findFirst({
           where: {
             userId: user.id,
-            name: category.trim(),
-            type: 'EXPENSE'
+            name,
+            type: desiredCategoryType
           }
         });
-        
-        
+
+        // If not found, try any category with same name (unique by name)
+        if (!categoryRecord) {
+          categoryRecord = await prisma.category.findFirst({
+            where: { userId: user.id, name }
+          });
+        }
+
+        // Create if none exists
         if (!categoryRecord) {
           categoryRecord = await prisma.category.create({
             data: {
               userId: user.id,
-              name: category.trim(),
-              type: 'EXPENSE'
+              name,
+              type: desiredCategoryType
             }
           });
         }
         
         categoryId = categoryRecord.id;
-        
       } catch (categoryError) {
         console.error('Category creation/lookup error:', categoryError);
         // Continue without category rather than failing
