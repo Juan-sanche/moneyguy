@@ -30,39 +30,120 @@ export default function Home() {
 
   // Dynamic dashboard state
   const [dashboardData, setDashboardData] = useState<any>(null);
+  const [budgetsData, setBudgetsData] = useState<any[] | null>(null);
+  const [goalsData, setGoalsData] = useState<any[] | null>(null);
+  const [categorySpending, setCategorySpending] = useState<any[] | null>(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const [loadingBudgets, setLoadingBudgets] = useState(false);
+  const [loadingGoals, setLoadingGoals] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
 
-  // Mock dashboard data (en producción vendrá de APIs)
-  const mockDashboardData = {
-    overview: {
-      totalBalance: 2450.75,
-      monthlyIncome: 3200,
-      monthlyExpenses: 2180,
-      savingsRate: 31.9,
-    },
-    budgets: [
-      { category: 'Alimentación', spent: 680, budget: 800, percentage: 85, status: 'good' },
-      { category: 'Transporte', spent: 420, budget: 500, percentage: 84, status: 'warning' },
-      { category: 'Entretenimiento', spent: 290, budget: 400, percentage: 72.5, status: 'good' },
-      { category: 'Compras', spent: 340, budget: 300, percentage: 113, status: 'over' }
-    ],
-    goals: [
-      { name: 'Fondo Emergencia', current: 2800, target: 5000, deadline: '2024-12-31', progress: 56 },
-      { name: 'Vacaciones', current: 300, target: 2000, deadline: '2025-06-01', progress: 15 },
-      { name: 'Nuevo Coche', current: 1500, target: 15000, deadline: '2025-12-31', progress: 10 }
-    ],
-    categorySpending: [
-      { name: 'Alimentación', value: 680, color: '#EF4444' },
-      { name: 'Transporte', value: 420, color: '#3B82F6' },
-      { name: 'Entretenimiento', value: 290, color: '#8B5CF6' },
-      { name: 'Compras', value: 340, color: '#F59E0B' }
-    ]
+  // Map dashboard API response to UI-friendly structure
+  const mapDashboardToUi = (apiData: any) => {
+    if (!apiData) return null;
+
+    const metrics = apiData.metrics || [];
+    const getMetric = (id: string, fallback = 0) => {
+      const m = metrics.find((x: any) => x.id === id);
+      return typeof m?.value === 'number' ? m.value : fallback;
+    };
+
+    // Charts
+    const charts = apiData.charts || [];
+    const expenseDist = charts.find((c: any) => c.id === 'expense-distribution');
+    const categorySpendingUi = expenseDist?.data?.map((d: any, idx: number) => ({
+      name: d.category,
+      value: d.amount,
+      color: expenseDist?.config?.colors?.[idx % (expenseDist?.config?.colors?.length || 1)] || '#3B82F6'
+    })) || [];
+
+    return {
+      overview: {
+        totalBalance: getMetric('net-cash-flow', 0),
+        monthlyIncome: getMetric('total-income', 0),
+        monthlyExpenses: getMetric('total-expenses', 0),
+        savingsRate: getMetric('savings-rate', 0),
+      },
+      categorySpending: categorySpendingUi,
+    };
   };
 
-  // Load chat history on mount
+  const fetchDashboard = async (period: string = 'monthly', type: string = 'overview') => {
+    try {
+      setLoadingDashboard(true);
+      const res = await fetch(`/api/dashboard?type=${encodeURIComponent(type)}&period=${encodeURIComponent(period)}`);
+      const json = await res.json();
+      if (json?.data) {
+        const mapped = mapDashboardToUi(json.data);
+        setDashboardData(mapped);
+        setCategorySpending(mapped?.categorySpending || []);
+      }
+    } catch (e) {
+      console.error('Error fetching dashboard:', e);
+    } finally {
+      setLoadingDashboard(false);
+    }
+  };
+
+  const fetchBudgets = async () => {
+    try {
+      setLoadingBudgets(true);
+      const res = await fetch('/api/budgets');
+      const json = await res.json();
+      if (json?.data) {
+        const mapped = json.data.map((b: any) => ({
+          category: b.category?.name || b.name,
+          spent: Number(b.spent ?? 0),
+          budget: Number(b.amount ?? 0),
+          percentage: Number(b.percentage ?? 0),
+          status: (b.status === 'OVER_BUDGET') ? 'over' : (b.status === 'WARNING') ? 'warning' : 'good',
+        }));
+        setBudgetsData(mapped);
+      }
+    } catch (e) {
+      console.error('Error fetching budgets:', e);
+    } finally {
+      setLoadingBudgets(false);
+    }
+  };
+
+  const fetchGoals = async () => {
+    try {
+      setLoadingGoals(true);
+      const res = await fetch('/api/goals');
+      const json = await res.json();
+      if (json?.data) {
+        const mapped = json.data.map((g: any) => ({
+          name: g.title,
+          current: Number(g.currentAmount ?? 0),
+          target: Number(g.targetAmount ?? 0),
+          deadline: g.targetDate || g.deadline || null,
+          progress: Number(g.progress ?? (g.targetAmount ? (Number(g.currentAmount) / Number(g.targetAmount)) * 100 : 0)),
+        }));
+        setGoalsData(mapped);
+      }
+    } catch (e) {
+      console.error('Error fetching goals:', e);
+    } finally {
+      setLoadingGoals(false);
+    }
+  };
+
+  const refreshAllData = async () => {
+    await Promise.all([
+      fetchDashboard(),
+      fetchBudgets(),
+      fetchGoals(),
+    ]);
+  };
+
+  // Load chat and dashboard data on session
   useEffect(() => {
-    if (session && messages.length === 0) {
-      loadChatHistory();
+    if (session) {
+      if (messages.length === 0) {
+        loadChatHistory();
+      }
+      refreshAllData();
     }
   }, [session]);
 
@@ -141,9 +222,10 @@ export default function Home() {
         setMessages(prev => [...prev, aiMessage]);
         setUsageData(result.data.usage);
 
-        // If a function was called, might want to refresh dashboard
-        if (result.data.functionCalled && ['getFinancialSummary', 'getBudgets', 'getGoals', 'getTransactions', 'generateDashboard'].includes(result.data.functionCalled)) {
+        // If a function was called, refresh dashboard-related data
+        if (result.data.functionCalled && ['getFinancialSummary', 'getBudgets', 'getGoals', 'getTransactions', 'generateDashboard', 'addTransaction', 'addBudget', 'addGoal', 'updateGoalProgress'].includes(result.data.functionCalled)) {
           setShowDashboard(true);
+          refreshAllData();
         }
       } else {
         throw new Error(result.error || 'No response from AI');
@@ -406,8 +488,375 @@ export default function Home() {
     "Ver mis últimas transacciones"
   ];
 
-  // CHAT VIEW COMPONENT
-  const ChatView = () => (
+  // Main Interface
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Header manteniendo tu diseño actual */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+              <span className="text-xl">💰</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">MoneyGuyAI</h1>
+              <p className="text-sm text-gray-600">
+                {currentView === 'chat' ? 'Tu asistente financiero inteligente' : 'Dashboard financiero'}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            {usageData && (
+              <div className="text-sm text-gray-600">
+                {usageData.remaining}/{usageData.limit} mensajes
+              </div>
+            )}
+            <button
+              onClick={clearChat}
+              className="text-gray-500 hover:text-red-600 transition-colors"
+              title="Limpiar chat"
+            >
+              🗑️
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-gray-500 hover:text-gray-700 transition-colors"
+              title="Cerrar sesión"
+            >
+              🚪
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 py-6">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {currentView === 'chat' ? (
+            <ChatView
+              messages={messages}
+              isAiTyping={isAiTyping}
+              newMessage={newMessage}
+              setNewMessage={setNewMessage}
+              sendMessage={sendMessage}
+              messagesEndRef={messagesEndRef}
+              quickActions={quickActions}
+              handleQuickAction={handleQuickAction}
+              usageData={usageData}
+              setCurrentView={setCurrentView}
+              showDashboard={showDashboard}
+            />
+          ) : (
+            <DashboardView
+              dashboardTab={dashboardTab}
+              setDashboardTab={setDashboardTab}
+              setCurrentView={setCurrentView}
+              dashboardData={dashboardData}
+              categorySpending={categorySpending}
+              budgetsData={budgetsData}
+              goalsData={goalsData}
+              handleQuickAction={handleQuickAction}
+            />
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// DASHBOARD VIEW COMPONENT (hoisted)
+function DashboardView({
+  dashboardTab,
+  setDashboardTab,
+  setCurrentView,
+  dashboardData,
+  categorySpending,
+  budgetsData,
+  goalsData,
+  handleQuickAction,
+}: {
+  dashboardTab: string;
+  setDashboardTab: (v: string) => void;
+  setCurrentView: (v: 'chat' | 'dashboard') => void;
+  dashboardData: any;
+  categorySpending: any[] | null;
+  budgetsData: any[] | null;
+  goalsData: any[] | null;
+  handleQuickAction: (s: string) => void;
+}) {
+  return (
+    <div className="col-span-full">
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
+        {/* Dashboard Header */}
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Dashboard Financiero</h2>
+              <p className="text-sm text-gray-600">Visión completa de tus finanzas</p>
+            </div>
+            <div className="flex items-center space-x-3">
+              <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                <option>Este Mes</option>
+                <option>Este Año</option>
+              </select>
+              <button 
+                onClick={() => setCurrentView('chat')}
+                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all text-sm font-medium"
+              >
+                💬 Chat IA
+              </button>
+            </div>
+          </div>
+          
+          {/* Dashboard Navigation */}
+          <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+            {[
+              { id: 'overview', label: 'Resumen', icon: '📊' },
+              { id: 'spending', label: 'Gastos', icon: '🥧' },
+              { id: 'goals', label: 'Metas', icon: '🎯' },
+              { id: 'investments', label: 'Inversiones', icon: '📈' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setDashboardTab(tab.id)}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium text-sm transition-all ${
+                  dashboardTab === tab.id 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Dashboard Content */}
+        <div className="p-6">
+          {dashboardTab === 'overview' && (
+            <div className="space-y-6">
+              {/* Key Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-600">Balance Total</h3>
+                    <span className="text-2xl">💰</span>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900">€{(dashboardData?.overview?.totalBalance ?? 0).toLocaleString()}</div>
+                  <div className="text-sm text-green-600 mt-1">+12.3% este mes</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-600">Ingresos</h3>
+                    <span className="text-2xl">📈</span>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900">€{(dashboardData?.overview?.monthlyIncome ?? 0).toLocaleString()}</div>
+                  <div className="text-sm text-blue-600 mt-1">Mensual</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-6 border border-red-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-600">Gastos</h3>
+                    <span className="text-2xl">📉</span>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900">€{(dashboardData?.overview?.monthlyExpenses ?? 0).toLocaleString()}</div>
+                  <div className="text-sm text-red-600 mt-1">Este mes</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-6 border border-purple-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-600">Ahorro</h3>
+                    <span className="text-2xl">🎯</span>
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900">{(dashboardData?.overview?.savingsRate ?? 0).toFixed(1)}%</div>
+                  <div className="text-sm text-purple-600 mt-1">Tasa mensual</div>
+                </div>
+              </div>
+
+              {/* Chart Placeholders */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 Flujo de Efectivo</h3>
+                  <div className="h-48 flex items-center justify-center text-gray-500">
+                    <div className="text-center">
+                      <div className="text-4xl mb-2">📈</div>
+                      <p>Gráfico de flujo de efectivo</p>
+                      <p className="text-sm">Recharts se integrará aquí</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">🥧 Gastos por Categoría</h3>
+                  <div className="h-48 flex items-center justify-center text-gray-500">
+                    <div className="text-center">
+                      <div className="text-4xl mb-2">🥧</div>
+                      <p>Gráfico circular de categorías</p>
+                      <p className="text-sm">Recharts se integrará aquí</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {dashboardTab === 'spending' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold text-gray-900">Análisis de Gastos</h3>
+              
+              {/* Category breakdown */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {(categorySpending || []).map((category, index) => (
+                  <div key={index} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">{category.name}</span>
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color }}></div>
+                    </div>
+                    <div className="text-xl font-bold text-gray-900">€{category.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Budget Progress */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 className="font-semibold text-gray-900 mb-4">Progreso de Presupuestos</h4>
+                <div className="space-y-4">
+                  {(budgetsData || []).map((budget, index) => (
+                    <div key={index} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-700">{budget.category}</span>
+                        <span className="text-sm text-gray-500">€{budget.spent} / €{budget.budget}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all duration-500 ${
+                            budget.status === 'over' ? 'bg-red-500' :
+                            budget.status === 'warning' ? 'bg-yellow-500' :
+                            'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(budget.percentage, 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className={`text-xs font-medium ${
+                          budget.status === 'over' ? 'text-red-600' :
+                          budget.status === 'warning' ? 'text-yellow-600' :
+                          'text-green-600'
+                        }`}>
+                          {budget.percentage.toFixed(1)}%
+                        </span>
+                        {budget.status === 'over' && (
+                          <span className="text-xs text-red-500">🚨 Presupuesto excedido</span>
+                        )}
+                        {budget.status === 'warning' && (
+                          <span className="text-xs text-orange-500">⚠️ Cerca del límite</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {dashboardTab === 'goals' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold text-gray-900">Seguimiento de Metas</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {(goalsData || []).map((goal, index) => {
+                  const daysLeft = Math.ceil((new Date(goal.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                  return (
+                    <div key={index} className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-100">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-gray-900">{goal.name}</h4>
+                        <span className="text-sm text-blue-600">{goal.progress}%</span>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div className="w-full bg-white rounded-full h-3">
+                          <div 
+                            className="h-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
+                            style={{ width: `${goal.progress}%` }}
+                          />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-500">Actual</span>
+                            <div className="font-semibold text-blue-600">€{goal.current.toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Objetivo</span>
+                            <div className="font-semibold text-purple-600">€{goal.target.toLocaleString()}</div>
+                          </div>
+                        </div>
+                        
+                        <div className="text-center">
+                          <span className="text-xs text-gray-500">Faltan</span>
+                          <div className={`font-medium text-sm ${daysLeft < 30 ? 'text-orange-600' : 'text-green-600'}`}>
+                            {daysLeft} días
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {dashboardTab === 'investments' && (
+            <div className="space-y-6">
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📈</div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Sección de Inversiones</h3>
+                <p className="text-gray-600 mb-6">Próximamente: Portfolio de inversiones, análisis de rendimiento, y recomendaciones.</p>
+                <button 
+                  onClick={() => handleQuickAction("Quiero empezar a invertir, ¿qué me recomiendas?")}
+                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all font-medium"
+                >
+                  Consultar sobre Inversiones
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// CHAT VIEW COMPONENT (hoisted)
+function ChatView({
+  messages,
+  isAiTyping,
+  newMessage,
+  setNewMessage,
+  sendMessage,
+  messagesEndRef,
+  quickActions,
+  handleQuickAction,
+  usageData,
+  setCurrentView,
+  showDashboard,
+}: {
+  messages: any[];
+  isAiTyping: boolean;
+  newMessage: string;
+  setNewMessage: (v: string) => void;
+  sendMessage: () => void | Promise<void>;
+  messagesEndRef: React.RefObject<HTMLDivElement>;
+  quickActions: string[];
+  handleQuickAction: (s: string) => void;
+  usageData: { used: number; limit: number; remaining: number } | null;
+  setCurrentView: (v: 'chat' | 'dashboard') => void;
+  showDashboard: boolean;
+}) {
+  return (
     <>
       {/* Chat Interface - Takes up 2/3 on large screens */}
       <div className="lg:col-span-2">
@@ -484,6 +933,7 @@ export default function Home() {
                 placeholder="Escribe tu pregunta o solicitud..."
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                 disabled={isAiTyping}
+                autoFocus
               />
               <button
                 onClick={sendMessage}
@@ -565,301 +1015,5 @@ export default function Home() {
         )}
       </div>
     </>
-  );
-
-  // DASHBOARD VIEW COMPONENT
-  const DashboardView = () => (
-    <div className="col-span-full">
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
-        {/* Dashboard Header */}
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Dashboard Financiero</h2>
-              <p className="text-sm text-gray-600">Visión completa de tus finanzas</p>
-            </div>
-            <div className="flex items-center space-x-3">
-              <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
-                <option>Este Mes</option>
-                <option>Este Año</option>
-              </select>
-              <button 
-                onClick={() => setCurrentView('chat')}
-                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all text-sm font-medium"
-              >
-                💬 Chat IA
-              </button>
-            </div>
-          </div>
-          
-          {/* Dashboard Navigation */}
-          <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
-            {[
-              { id: 'overview', label: 'Resumen', icon: '📊' },
-              { id: 'spending', label: 'Gastos', icon: '🥧' },
-              { id: 'goals', label: 'Metas', icon: '🎯' },
-              { id: 'investments', label: 'Inversiones', icon: '📈' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setDashboardTab(tab.id)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium text-sm transition-all ${
-                  dashboardTab === tab.id 
-                    ? 'bg-white text-blue-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                <span>{tab.icon}</span>
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Dashboard Content */}
-        <div className="p-6">
-          {dashboardTab === 'overview' && (
-            <div className="space-y-6">
-              {/* Key Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Balance Total</h3>
-                    <span className="text-2xl">💰</span>
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900">€{mockDashboardData.overview.totalBalance.toLocaleString()}</div>
-                  <div className="text-sm text-green-600 mt-1">+12.3% este mes</div>
-                </div>
-
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Ingresos</h3>
-                    <span className="text-2xl">📈</span>
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900">€{mockDashboardData.overview.monthlyIncome.toLocaleString()}</div>
-                  <div className="text-sm text-blue-600 mt-1">Mensual</div>
-                </div>
-
-                <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-6 border border-red-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Gastos</h3>
-                    <span className="text-2xl">📉</span>
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900">€{mockDashboardData.overview.monthlyExpenses.toLocaleString()}</div>
-                  <div className="text-sm text-red-600 mt-1">Este mes</div>
-                </div>
-
-                <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-6 border border-purple-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Ahorro</h3>
-                    <span className="text-2xl">🎯</span>
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900">{mockDashboardData.overview.savingsRate}%</div>
-                  <div className="text-sm text-purple-600 mt-1">Tasa mensual</div>
-                </div>
-              </div>
-
-              {/* Chart Placeholders */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 Flujo de Efectivo</h3>
-                  <div className="h-48 flex items-center justify-center text-gray-500">
-                    <div className="text-center">
-                      <div className="text-4xl mb-2">📈</div>
-                      <p>Gráfico de flujo de efectivo</p>
-                      <p className="text-sm">Recharts se integrará aquí</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">🥧 Gastos por Categoría</h3>
-                  <div className="h-48 flex items-center justify-center text-gray-500">
-                    <div className="text-center">
-                      <div className="text-4xl mb-2">🥧</div>
-                      <p>Gráfico circular de categorías</p>
-                      <p className="text-sm">Recharts se integrará aquí</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {dashboardTab === 'spending' && (
-            <div className="space-y-6">
-              <h3 className="text-lg font-semibold text-gray-900">Análisis de Gastos</h3>
-              
-              {/* Category breakdown */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {mockDashboardData.categorySpending.map((category, index) => (
-                  <div key={index} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-700">{category.name}</span>
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color }}></div>
-                    </div>
-                    <div className="text-xl font-bold text-gray-900">€{category.value}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Budget Progress */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h4 className="font-semibold text-gray-900 mb-4">Progreso de Presupuestos</h4>
-                <div className="space-y-4">
-                  {mockDashboardData.budgets.map((budget, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-gray-700">{budget.category}</span>
-                        <span className="text-sm text-gray-500">€{budget.spent} / €{budget.budget}</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className={`h-2 rounded-full transition-all duration-500 ${
-                            budget.status === 'over' ? 'bg-red-500' :
-                            budget.status === 'warning' ? 'bg-yellow-500' :
-                            'bg-green-500'
-                          }`}
-                          style={{ width: `${Math.min(budget.percentage, 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className={`text-xs font-medium ${
-                          budget.status === 'over' ? 'text-red-600' :
-                          budget.status === 'warning' ? 'text-yellow-600' :
-                          'text-green-600'
-                        }`}>
-                          {budget.percentage.toFixed(1)}%
-                        </span>
-                        {budget.status === 'over' && (
-                          <span className="text-xs text-red-500">🚨 Presupuesto excedido</span>
-                        )}
-                        {budget.status === 'warning' && (
-                          <span className="text-xs text-orange-500">⚠️ Cerca del límite</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {dashboardTab === 'goals' && (
-            <div className="space-y-6">
-              <h3 className="text-lg font-semibold text-gray-900">Seguimiento de Metas</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {mockDashboardData.goals.map((goal, index) => {
-                  const daysLeft = Math.ceil((new Date(goal.deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                  return (
-                    <div key={index} className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-100">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold text-gray-900">{goal.name}</h4>
-                        <span className="text-sm text-blue-600">{goal.progress}%</span>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        <div className="w-full bg-white rounded-full h-3">
-                          <div 
-                            className="h-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500"
-                            style={{ width: `${goal.progress}%` }}
-                          />
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-500">Actual</span>
-                            <div className="font-semibold text-blue-600">€{goal.current.toLocaleString()}</div>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Objetivo</span>
-                            <div className="font-semibold text-purple-600">€{goal.target.toLocaleString()}</div>
-                          </div>
-                        </div>
-                        
-                        <div className="text-center">
-                          <span className="text-xs text-gray-500">Faltan</span>
-                          <div className={`font-medium text-sm ${daysLeft < 30 ? 'text-orange-600' : 'text-green-600'}`}>
-                            {daysLeft} días
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {dashboardTab === 'investments' && (
-            <div className="space-y-6">
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">📈</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Sección de Inversiones</h3>
-                <p className="text-gray-600 mb-6">Próximamente: Portfolio de inversiones, análisis de rendimiento, y recomendaciones.</p>
-                <button 
-                  onClick={() => handleQuickAction("Quiero empezar a invertir, ¿qué me recomiendas?")}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all font-medium"
-                >
-                  Consultar sobre Inversiones
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  // Main Interface
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Header manteniendo tu diseño actual */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-              <span className="text-xl">💰</span>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">MoneyGuyAI</h1>
-              <p className="text-sm text-gray-600">
-                {currentView === 'chat' ? 'Tu asistente financiero inteligente' : 'Dashboard financiero'}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            {usageData && (
-              <div className="text-sm text-gray-600">
-                {usageData.remaining}/{usageData.limit} mensajes
-              </div>
-            )}
-            <button
-              onClick={clearChat}
-              className="text-gray-500 hover:text-red-600 transition-colors"
-              title="Limpiar chat"
-            >
-              🗑️
-            </button>
-            <button
-              onClick={handleLogout}
-              className="text-gray-500 hover:text-gray-700 transition-colors"
-              title="Cerrar sesión"
-            >
-              🚪
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        <div className="grid gap-6 lg:grid-cols-3">
-          {currentView === 'chat' ? <ChatView /> : <DashboardView />}
-        </div>
-      </main>
-    </div>
   );
 }
