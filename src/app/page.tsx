@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ResponsiveContainer,
   PieChart,
@@ -16,6 +16,46 @@ import {
 } from 'recharts';
 import { useSession, signIn, signOut } from 'next-auth/react';
 
+type DashboardApiData = {
+  metrics?: Array<{ id: string; value: number }>;
+  charts?: Array<{
+    id: string;
+    data?: Array<{ category: string; amount: number }>;
+    config?: { colors?: string[] };
+  }>;
+};
+
+const mapDashboardToUi = (apiData: DashboardApiData | null) => {
+  if (!apiData) return null;
+
+  const metrics = apiData.metrics || [];
+  const getMetric = (id: string, fallback = 0) => {
+    const metric = metrics.find(m => m.id === id);
+    return typeof metric?.value === 'number' ? metric.value : fallback;
+  };
+
+  const charts = apiData.charts || [];
+  const expenseDist = charts.find(chart => chart.id === 'expense-distribution');
+  const categorySpendingUi = expenseDist?.data?.map((datum, idx) => ({
+    name: datum.category,
+    value: datum.amount,
+    color:
+      expenseDist?.config?.colors?.[
+        idx % (expenseDist?.config?.colors?.length || 1)
+      ] || '#3B82F6',
+  })) || [];
+
+  return {
+    overview: {
+      totalBalance: getMetric('net-cash-flow', 0),
+      monthlyIncome: getMetric('total-income', 0),
+      monthlyExpenses: getMetric('total-expenses', 0),
+      savingsRate: getMetric('savings-rate', 0),
+    },
+    categorySpending: categorySpendingUi,
+  };
+};
+
 export default function Home() {
   const { data: session, status } = useSession();
   
@@ -29,6 +69,7 @@ export default function Home() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [usageData, setUsageData] = useState<{used: number, limit: number, remaining: number} | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasLoadedInitialData = useRef(false);
 
   // Auth state
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -51,37 +92,7 @@ export default function Home() {
   const [loadingGoals, setLoadingGoals] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
 
-  // Map dashboard API response to UI-friendly structure
-  const mapDashboardToUi = (apiData: any) => {
-    if (!apiData) return null;
-
-    const metrics = apiData.metrics || [];
-    const getMetric = (id: string, fallback = 0) => {
-      const m = metrics.find((x: any) => x.id === id);
-      return typeof m?.value === 'number' ? m.value : fallback;
-    };
-
-    // Charts
-    const charts = apiData.charts || [];
-    const expenseDist = charts.find((c: any) => c.id === 'expense-distribution');
-    const categorySpendingUi = expenseDist?.data?.map((d: any, idx: number) => ({
-      name: d.category,
-      value: d.amount,
-      color: expenseDist?.config?.colors?.[idx % (expenseDist?.config?.colors?.length || 1)] || '#3B82F6'
-    })) || [];
-
-    return {
-      overview: {
-        totalBalance: getMetric('net-cash-flow', 0),
-        monthlyIncome: getMetric('total-income', 0),
-        monthlyExpenses: getMetric('total-expenses', 0),
-        savingsRate: getMetric('savings-rate', 0),
-      },
-      categorySpending: categorySpendingUi,
-    };
-  };
-
-  const fetchDashboard = async (period: string = 'monthly', type: string = 'overview') => {
+  const fetchDashboard = useCallback(async (period: string = 'monthly', type: string = 'overview') => {
     try {
       setLoadingDashboard(true);
       const res = await fetch(`/api/dashboard?type=${encodeURIComponent(type)}&period=${encodeURIComponent(period)}`);
@@ -96,9 +107,9 @@ export default function Home() {
     } finally {
       setLoadingDashboard(false);
     }
-  };
+  }, []);
 
-  const fetchBudgets = async () => {
+  const fetchBudgets = useCallback(async () => {
     try {
       setLoadingBudgets(true);
       const res = await fetch('/api/budgets');
@@ -118,9 +129,9 @@ export default function Home() {
     } finally {
       setLoadingBudgets(false);
     }
-  };
+  }, []);
 
-  const fetchGoals = async () => {
+  const fetchGoals = useCallback(async () => {
     try {
       setLoadingGoals(true);
       const res = await fetch('/api/goals');
@@ -140,32 +151,23 @@ export default function Home() {
     } finally {
       setLoadingGoals(false);
     }
-  };
+  }, []);
 
-  const refreshAllData = async () => {
-    await Promise.all([
-      fetchDashboard(),
-      fetchBudgets(),
-      fetchGoals(),
-    ]);
-  };
+  const refreshAllData = useCallback(async () => {
+    await Promise.all([fetchDashboard(), fetchBudgets(), fetchGoals()]);
+  }, [fetchDashboard, fetchBudgets, fetchGoals]);
 
-  // Load chat and dashboard data on session
-  useEffect(() => {
-    if (session) {
-      if (messages.length === 0) {
-        loadChatHistory();
-      }
-      refreshAllData();
-    }
-  }, [session]);
+  const initializeChat = useCallback(() => {
+    const welcomeMessage = {
+      id: Date.now(),
+      text: `¡Hola! 👋 Soy tu asistente financiero personal con IA. Puedo ayudarte a:\n\n💳 Registrar gastos e ingresos\n📊 Crear y revisar presupuestos\n🎯 Establecer y seguir metas financieras\n📈 Analizar tu situación económica\n\n¿En qué puedo ayudarte hoy?`,
+      sender: 'ai',
+      timestamp: new Date(),
+    };
+    setMessages([welcomeMessage]);
+  }, []);
 
-  // Auto scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isAiTyping]);
-
-  const loadChatHistory = async () => {
+  const loadChatHistory = useCallback(async () => {
     try {
       const response = await fetch('/api/chat?limit=50');
       const result = await response.json();
@@ -184,17 +186,27 @@ export default function Home() {
       console.error('Error loading chat history:', error);
       initializeChat();
     }
-  };
+  }, [initializeChat]);
 
-  const initializeChat = () => {
-    const welcomeMessage = {
-      id: Date.now(),
-      text: `¡Hola! 👋 Soy tu asistente financiero personal con IA. Puedo ayudarte a:\n\n💳 Registrar gastos e ingresos\n📊 Crear y revisar presupuestos\n🎯 Establecer y seguir metas financieras\n📈 Analizar tu situación económica\n\n¿En qué puedo ayudarte hoy?`,
-      sender: 'ai',
-      timestamp: new Date(),
-    };
-    setMessages([welcomeMessage]);
-  };
+  // Load chat and dashboard data on session
+  useEffect(() => {
+    if (!session || hasLoadedInitialData.current) {
+      return;
+    }
+
+    hasLoadedInitialData.current = true;
+
+    if (messages.length === 0) {
+      void loadChatHistory();
+    }
+
+    void refreshAllData();
+  }, [session, messages.length, loadChatHistory, refreshAllData]);
+
+  // Auto scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isAiTyping]);
 
   const sendMessage = async () => {
     if (!newMessage.trim() || isAiTyping) return;
@@ -598,6 +610,18 @@ function DashboardView({
   goalsData: any[] | null;
   handleQuickAction: (s: string) => void;
 }) {
+  const renderCategoryLabel = ({
+    name,
+    percent,
+  }: {
+    name?: string
+    percent?: number
+  }) => {
+    const labelName = name ?? 'Total'
+    const share = ((percent ?? 0) * 100).toFixed(0)
+    return `${labelName} ${share}%`
+  }
+
   return (
     <div className="col-span-full">
       <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
@@ -714,7 +738,7 @@ function DashboardView({
                             cx="50%"
                             cy="50%"
                             outerRadius={90}
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            label={renderCategoryLabel}
                           >
                             {categorySpending.map((entry, index) => (
                               <Cell key={`cell-${index}`} fill={entry.color || '#3B82F6'} />

@@ -6,12 +6,7 @@ const nextConfig = {
   },
   
   // Skip static generation for API routes
-  trailingSlash: false,
-  
-  // Exclude NextAuth from static optimization
-  async generateStaticParams() {
-    return []
-  }
+  trailingSlash: false
 }
 
 module.exports = nextConfig

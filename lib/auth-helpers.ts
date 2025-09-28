@@ -1,12 +1,47 @@
 import { getServerSession } from 'next-auth'
-import { authOptions } from './auth'
+import type { NextApiRequest, NextApiResponse } from 'next'
 import { NextRequest } from 'next/server'
 
+import { authOptions } from './auth'
+
+function toNextApiRequest(request: NextRequest): NextApiRequest {
+  const query = Object.fromEntries(request.nextUrl.searchParams)
+  const cookies = Object.fromEntries(
+    request.cookies.getAll().map(cookie => [cookie.name, cookie.value])
+  )
+  const headers: Record<string, string | string[]> = {}
+  request.headers.forEach((value, key) => {
+    headers[key] = value
+  })
+
+  return {
+    cookies,
+    headers,
+    method: request.method,
+    query,
+  } as unknown as NextApiRequest
+}
+
+function createNextApiResponseStub(): NextApiResponse {
+  return {
+    getHeader() {
+      return undefined
+    },
+    setHeader() {},
+    setCookie() {},
+  } as unknown as NextApiResponse
+}
+
 export async function getCurrentUser(request?: NextRequest) {
-  const session = await getServerSession(authOptions)
-  console.log('Session:', session) // Debug log
-  console.log('User:', session?.user) // Debug log
-  return session?.user
+  const session = request
+    ? await getServerSession(
+        toNextApiRequest(request),
+        createNextApiResponseStub(),
+        authOptions,
+      )
+    : await getServerSession(authOptions)
+
+  return session?.user ?? null
 }
 
 export async function requireAuth(request?: NextRequest) {
