@@ -3,6 +3,9 @@ import { NextRequest } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { requireAuth, errorResponse, successResponse } from '../../../../lib/auth-helpers';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface DashboardMetric {
   id: string;
   title: string;

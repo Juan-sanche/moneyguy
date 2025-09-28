@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { requireAuth, unauthorizedResponse, errorResponse, successResponse } from '../../../../lib/auth-helpers';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // GET /api/transactions - Get all transactions for user
 export async function GET(request: NextRequest) {
   try {

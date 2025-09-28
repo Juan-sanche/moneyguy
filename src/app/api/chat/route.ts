@@ -3,6 +3,9 @@ import OpenAI from 'openai';
 import { prisma } from '../../../../lib/prisma';
 import { requireAuth, unauthorizedResponse, errorResponse, successResponse } from '../../../../lib/auth-helpers';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
